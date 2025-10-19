@@ -35,7 +35,7 @@
 
   <script>
     // === CONFIGURATION ===
-    const CLIENT_ID = "YOUR_TWITCH_CLIENT_ID"; // from https://dev.twitch.tv/console/apps
+    const CLIENT_ID = "2escgq91m5o4qli9fnhao7gmhrq0ho"; // from https://dev.twitch.tv/console/apps
     const REDIRECT_URI = window.location.origin + window.location.pathname;
     const SCOPES = "channel:read:subscriptions user:read:email";
     // ======================
@@ -105,7 +105,7 @@
       const res = await fetch("https://api.twitch.tv/helix/users", {
         headers: {
           "Authorization": `Bearer ${accessToken}`,
-          "Client-ID": "2escgq91m5o4qli9fnhao7gmhrq0ho"
+          "Client-ID": CLIENT_ID
         }
       });
       const data = await res.json();
@@ -232,4 +232,5 @@
   </script>
 </body>
 </html>
+
 
