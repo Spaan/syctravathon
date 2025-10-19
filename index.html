@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Twitch Subathon Overlay</title>
+<style>
+  body {
+    margin: 0;
+    background: transparent;
+    color: white;
+    font-family: "Trebuchet MS", sans-serif;
+    text-align: center;
+    font-size: 54px;
+    font-weight: bold;
+    text-shadow: 2px 2px 10px #9146FF;
+  }
+  #counter {
+    margin-top: 40px;
+  }
+  #login {
+    background-color: #9146FF;
+    color: white;
+    border: none;
+    padding: 16px 32px;
+    border-radius: 10px;
+    font-size: 24px;
+    cursor: pointer;
+    margin-top: 100px;
+  }
+</style>
+</head>
+<body>
+  <button id="login">Authorize with Twitch</button>
+  <div id="counter" style="display:none;">Subs Today: 0 (Travincal Runs: 0)</div>
+
+  <script>
+    // === CONFIGURATION ===
+    const CLIENT_ID = "YOUR_TWITCH_CLIENT_ID"; // from https://dev.twitch.tv/console/apps
+    const REDIRECT_URI = window.location.origin + window.location.pathname;
+    const SCOPES = "channel:read:subscriptions user:read:email";
+    // ======================
+
+    let accessToken = null;
+    let broadcasterId = null;
+    let subsToday = 0;
+    let lastReset = new Date();
+
+    const loginButton = document.getElementById("login");
+    const counterDiv = document.getElementById("counter");
+
+    // === LOCAL PERSISTENCE ===
+    function saveState() {
+      const state = {
+        subsToday,
+        lastReset: lastReset.toISOString()
+      };
+      localStorage.setItem("subathonState", JSON.stringify(state));
+    }
+
+    function loadState() {
+      const data = localStorage.getItem("subathonState");
+      if (data) {
+        try {
+          const state = JSON.parse(data);
+          subsToday = state.subsToday || 0;
+          lastReset = state.lastReset ? new Date(state.lastReset) : new Date();
+        } catch (e) {
+          console.error("Error loading saved state:", e);
+        }
+      }
+    }
+
+    function saveToken() {
+      if (accessToken) {
+        localStorage.setItem("twitchAccessToken", accessToken);
+      }
+    }
+
+    function loadToken() {
+      const token = localStorage.getItem("twitchAccessToken");
+      if (token) {
+        accessToken = token;
+        console.log("Loaded saved Twitch access token.");
+      }
+    }
+
+    // === AUTH FLOW ===
+    function authorize() {
+      const url = `https://id.twitch.tv/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=${encodeURIComponent(SCOPES)}`;
+      window.location = url;
+    }
+
+    function parseToken() {
+      const hash = window.location.hash;
+      if (hash && hash.includes("access_token")) {
+        const params = new URLSearchParams(hash.substring(1));
+        accessToken = params.get("access_token");
+        console.log("Received new Twitch access token.");
+        saveToken();
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+
+    async function fetchUser() {
+      const res = await fetch("https://api.twitch.tv/helix/users", {
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Client-ID": CLIENT_ID
+        }
+      });
+      const data = await res.json();
+
+      if (!data.data || !data.data.length) {
+        console.error("Failed to fetch user info:", data);
+        return false;
+      }
+
+      broadcasterId = data.data[0].id;
+      console.log("Logged in as:", data.data[0].display_name);
+      return true;
+    }
+
+    // === DAILY RESET ===
+    function resetIfNewDay() {
+      const now = new Date();
+      if (now.getDate() !== lastReset.getDate()) {
+        subsToday = 0;
+        lastReset = now;
+        updateDisplay();
+        saveState();
+      }
+    }
+
+    // === UI UPDATE ===
+    function updateDisplay() {
+      const runs = subsToday * 10;
+      counterDiv.textContent = `Subs Today: ${subsToday} (Travincal Runs: ${runs})`;
+    }
+
+    // === EVENTSUB CONNECTION ===
+    function connectEventSub() {
+      const ws = new WebSocket("wss://eventsub.wss.twitch.tv/ws");
+      ws.onopen = () => console.log("Connected to EventSub WebSocket");
+
+      ws.onmessage = async (event) => {
+        const msg = JSON.parse(event.data);
+
+        if (msg.metadata?.message_type === "session_welcome") {
+          const sessionId = msg.payload.session.id;
+          subscribeToEvents(sessionId);
+        }
+
+        if (msg.metadata?.message_type === "notification") {
+          const type = msg.metadata.subscription_type;
+          const e = msg.payload.event;
+
+          if (type === "channel.subscribe" || type === "channel.subscription.message") {
+            subsToday += 1;
+          } else if (type === "channel.subscription.gift") {
+            subsToday += e.total ?? 1;
+          }
+
+          updateDisplay();
+          saveState();
+        }
+      };
+
+      ws.onclose = () => {
+        console.warn("EventSub disconnected. Reconnecting in 10s...");
+        setTimeout(connectEventSub, 10000);
+      };
+    }
+
+    async function subscribeToEvents(sessionId) {
+      const topics = [
+        "channel.subscribe",
+        "channel.subscription.message",
+        "channel.subscription.gift"
+      ];
+
+      for (const type of topics) {
+        const res = await fetch("https://api.twitch.tv/helix/eventsub/subscriptions", {
+          method: "POST",
+          headers: {
+            "Client-ID": CLIENT_ID,
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            type,
+            version: "1",
+            condition: { broadcaster_user_id: broadcasterId },
+            transport: { method: "websocket", session_id: sessionId }
+          })
+        });
+
+        const data = await res.json();
+        if (data.error) console.error("EventSub subscribe error:", data);
+      }
+
+      console.log("Subscribed to Twitch sub events.");
+    }
+
+    // === STARTUP ===
+    async function startOverlay() {
+      loginButton.style.display = "none";
+      counterDiv.style.display = "block";
+      loadState();
+      const ok = await fetchUser();
+      if (!ok) {
+        console.error("User fetch failed — possibly invalid token. Clearing and reauth.");
+        localStorage.removeItem("twitchAccessToken");
+        window.location.reload();
+        return;
+      }
+      updateDisplay();
+      connectEventSub();
+      setInterval(resetIfNewDay, 60 * 1000);
+    }
+
+    // === INIT FLOW ===
+    parseToken();
+    loadToken();
+
+    if (accessToken) {
+      startOverlay();
+    } else {
+      loginButton.style.display = "block";
+      counterDiv.style.display = "none";
+      loginButton.onclick = authorize;
+    }
+  </script>
+</body>
+</html>
