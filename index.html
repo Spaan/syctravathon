@@ -43,17 +43,13 @@
     let accessToken = null;
     let broadcasterId = null;
     let subsToday = 0;
-    let lastReset = new Date();
 
     const loginButton = document.getElementById("login");
     const counterDiv = document.getElementById("counter");
 
     // === LOCAL PERSISTENCE ===
     function saveState() {
-      const state = {
-        subsToday,
-        lastReset: lastReset.toISOString()
-      };
+      const state = { subsToday };
       localStorage.setItem("subathonState", JSON.stringify(state));
     }
 
@@ -63,7 +59,6 @@
         try {
           const state = JSON.parse(data);
           subsToday = state.subsToday || 0;
-          lastReset = state.lastReset ? new Date(state.lastReset) : new Date();
         } catch (e) {
           console.error("Error loading saved state:", e);
         }
@@ -118,17 +113,6 @@
       broadcasterId = data.data[0].id;
       console.log("Logged in as:", data.data[0].display_name);
       return true;
-    }
-
-    // === DAILY RESET ===
-    function resetIfNewDay() {
-      const now = new Date();
-      if (now.getDate() !== lastReset.getDate()) {
-        subsToday = 0;
-        lastReset = now;
-        updateDisplay();
-        saveState();
-      }
     }
 
     // === UI UPDATE ===
@@ -215,8 +199,24 @@
       }
       updateDisplay();
       connectEventSub();
-      setInterval(resetIfNewDay, 60 * 1000);
     }
+
+    // === OPTIONAL MANUAL RESET ===
+    function manualReset() {
+      subsToday = 0;
+      saveState();
+      updateDisplay();
+      console.log("Manual counter reset.");
+    }
+
+    // Allow reset by adding ?reset=true to URL or pressing R
+    if (window.location.search.includes("reset=true")) {
+      localStorage.removeItem("subathonState");
+      manualReset();
+    }
+    document.addEventListener("keydown", e => {
+      if (e.key.toLowerCase() === "r") manualReset();
+    });
 
     // === INIT FLOW ===
     parseToken();
@@ -232,6 +232,3 @@
   </script>
 </body>
 </html>
-
-
-
