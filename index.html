@@ -31,7 +31,7 @@
 </head>
 <body>
   <button id="login">Authorize with Twitch</button>
-  <div id="counter" style="display:none;">Subs Today: 0 (Travincal Runs: 0)</div>
+  <div id="counter" style="display:none;">Subs Today: 0 (Trav Runs: 0)</div>
 
   <script>
     // === CONFIGURATION ===
@@ -134,7 +134,7 @@
     // === UI UPDATE ===
     function updateDisplay() {
       const runs = subsToday * 10;
-      counterDiv.textContent = `Subs Today: ${subsToday} (Travincal Runs: ${runs})`;
+      counterDiv.textContent = `Subs Today: ${subsToday} (Trav Runs: ${runs})`;
     }
 
     // === EVENTSUB CONNECTION ===
@@ -232,5 +232,6 @@
   </script>
 </body>
 </html>
+
 
 
