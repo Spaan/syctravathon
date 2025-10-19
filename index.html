@@ -3,20 +3,41 @@
 <head>
 <meta charset="UTF-8">
 <title>Twitch Subathon Overlay</title>
+
+<!-- Diablo / Exocet-like font -->
 <style>
+  @font-face {
+    font-family: 'Exocet';
+    src: url('http://spaan.ca/exocet.ttf') format('truetype'),
+    font-display: swap;
+  }
+
   body {
     margin: 0;
     background: transparent;
-    color: white;
-    font-family: "Trebuchet MS", sans-serif;
+    color: #ffd37f;
+    font-family: 'ExocetDiablo', 'Trebuchet MS', sans-serif;
     text-align: center;
     font-size: 54px;
     font-weight: bold;
-    text-shadow: 2px 2px 10px #9146FF;
+    letter-spacing: 2px;
+    text-shadow:
+      0 0 10px #ffbb00,
+      0 0 20px #ff6600,
+      0 0 30px #ff3300;
   }
+
   #counter {
     margin-top: 40px;
+    animation: fadeIn 0.8s ease-in-out;
   }
+
+  @keyframes pop {
+    0% { transform: scale(1); text-shadow: 0 0 15px #ffbb00, 0 0 25px #ff3300; }
+    50% { transform: scale(1.15); text-shadow: 0 0 25px #fff1b8, 0 0 40px #ff6600; }
+    100% { transform: scale(1); text-shadow: 0 0 10px #ffbb00, 0 0 20px #ff3300; }
+  }
+
   #login {
     background-color: #9146FF;
     color: white;
@@ -35,7 +56,7 @@
 
   <script>
     // === CONFIGURATION ===
-    const CLIENT_ID = "2escgq91m5o4qli9fnhao7gmhrq0ho"; // from https://dev.twitch.tv/console/apps
+    const CLIENT_ID = "2escgq91m5o4qli9fnhao7gmhrq0ho";
     const REDIRECT_URI = window.location.origin + window.location.pathname;
     const SCOPES = "channel:read:subscriptions user:read:email";
     // ======================
@@ -66,9 +87,7 @@
     }
 
     function saveToken() {
-      if (accessToken) {
-        localStorage.setItem("twitchAccessToken", accessToken);
-      }
+      if (accessToken) localStorage.setItem("twitchAccessToken", accessToken);
     }
 
     function loadToken() {
@@ -115,13 +134,13 @@
       return true;
     }
 
-    // === UI UPDATE ===
     function updateDisplay() {
       const runs = subsToday * 10;
       counterDiv.textContent = `Subs Today: ${subsToday} (Trav Runs: ${runs})`;
+      counterDiv.style.animation = "pop 0.5s ease";
+      setTimeout(() => (counterDiv.style.animation = ""), 600);
     }
 
-    // === EVENTSUB CONNECTION ===
     function connectEventSub() {
       const ws = new WebSocket("wss://eventsub.wss.twitch.tv/ws");
       ws.onopen = () => console.log("Connected to EventSub WebSocket");
@@ -185,14 +204,13 @@
       console.log("Subscribed to Twitch sub events.");
     }
 
-    // === STARTUP ===
     async function startOverlay() {
       loginButton.style.display = "none";
       counterDiv.style.display = "block";
       loadState();
       const ok = await fetchUser();
       if (!ok) {
-        console.error("User fetch failed — possibly invalid token. Clearing and reauth.");
+        console.error("User fetch failed — invalid token?");
         localStorage.removeItem("twitchAccessToken");
         window.location.reload();
         return;
@@ -201,7 +219,6 @@
       connectEventSub();
     }
 
-    // === OPTIONAL MANUAL RESET ===
     function manualReset() {
       subsToday = 0;
       saveState();
@@ -209,7 +226,6 @@
       console.log("Manual counter reset.");
     }
 
-    // Allow reset by adding ?reset=true to URL or pressing R
     if (window.location.search.includes("reset=true")) {
       localStorage.removeItem("subathonState");
       manualReset();
@@ -218,13 +234,11 @@
       if (e.key.toLowerCase() === "r") manualReset();
     });
 
-    // === INIT FLOW ===
+    // === INIT ===
     parseToken();
     loadToken();
-
-    if (accessToken) {
-      startOverlay();
-    } else {
+    if (accessToken) startOverlay();
+    else {
       loginButton.style.display = "block";
       counterDiv.style.display = "none";
       loginButton.onclick = authorize;
